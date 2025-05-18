@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Accessibility Reports History</title>
+    <link
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+        rel="stylesheet"
+    />
+    <style>
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+        }
+        .card {
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .report-list {
+            list-style: none;
+            padding: 0;
+        }
+        .report-item {
+            border-bottom: 1px solid #dee2e6;
+            padding: 15px 0;
+        }
+        .report-item:last-child {
+            border-bottom: none;
+        }
+        .nav-links {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav-links">
+            <a href="/" class="btn btn-outline-primary">← Back to Home</a>
+        </div>
+        
+        <h1 class="text-center mb-5">Accessibility Reports History</h1>
+
+        <div class="card">
+            <div class="card-header">
+                <h2 class="h4 mb-0">Past Reports</h2>
+            </div>
+            <div class="card-body">
+                {% if reports %}
+                    <ul class="report-list">
+                        {% for report in reports %}
+                            <li class="report-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h5 class="mb-1">{{ report.url }}</h5>
+                                        <p class="text-muted mb-1">Generated on: {{ report.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                                        <p class="mb-0">Filename: {{ report.filename }}</p>
+                                    </div>
+                                    <div>
+                                        <a href="{{ url_for('download_report', file_id=report.file_id) }}" 
+                                           class="btn btn-primary btn-sm">
+                                            Download Report
+                                        </a>
+                                    </div>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-center text-muted">No accessibility reports have been generated yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</body>
+</html> 
