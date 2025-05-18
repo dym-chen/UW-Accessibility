@@ -3,15 +3,41 @@ import os
 from datetime import datetime
 from accessibility_checker import check_accessibility
 from git_comparator import compare_commits
+from database import Database
 import tempfile
+from bson import ObjectId
+import io
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 
+# Initialize database
+db = Database()
+
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/reports')
+def view_reports():
+    reports = db.list_reports()
+    # Sort reports by timestamp, most recent first
+    reports.sort(key=lambda x: x['timestamp'], reverse=True)
+    return render_template('reports.html', reports=reports)
+
+@app.route('/download-report/<file_id>')
+def download_report(file_id):
+    try:
+        pdf_data, filename = db.get_pdf(ObjectId(file_id))
+        return send_file(
+            io.BytesIO(pdf_data),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/check-accessibility', methods=['POST'])
 def accessibility_check():
@@ -20,7 +46,13 @@ def accessibility_check():
         return jsonify({'error': 'URL is required'}), 400
     
     try:
+        # Generate the accessibility report
         report_path = check_accessibility(url)
+        
+        # Store the PDF in MongoDB
+        file_id = db.store_pdf(report_path, url)
+        
+        # Send the file to the user
         return send_file(
             report_path,
             as_attachment=True,
