@@ -8,29 +8,40 @@ import base64
 
 def check_accessibility(url):
     with sync_playwright() as p:
-        browser = p.chromium.launch()
-        context = browser.new_context()
-        context.set_default_timeout(60000)  
+        # Launch browser with optimized settings
+        browser = p.chromium.launch(
+            headless=True,
+        )
+        # Create a new context with optimized settings
+        context = browser.new_context(
+            viewport={'width': 1280, 'height': 800},
+            java_script_enabled=True,
+            ignore_https_errors=True
+        )
         page = context.new_page()
         
         # Navigate to the URL
         page.goto(url)
         
-        # Inject axe-core
-        page.add_script_tag(url='https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.8.2/axe.min.js')
-
-        # Run accessibility check - note the async arrow function and await inside evaluate
-        results = page.evaluate('''async () => { return await axe.run(document.body); }''')
+        # Get the path to axe.min.js
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        axe_path = os.path.join(current_dir, 'axe.min.js')
         
-        # print axe results to a file in the debug folder
-        with open("debug/axe_results.json", "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2)
+        # Inject axe-core from local file
+        with open(axe_path, 'r') as f:
+            axe_script = f.read()
+            page.evaluate(axe_script)
+        
+        # Run accessibility check
+        results = page.evaluate('''() => {
+            return axe.run(document.body);
+        }''')
         
         # Take screenshots of issues
         screenshots = []
         for violation in results.get('violations', []):
-            for node in violation.get('nodes', []):
-                for index, target in enumerate(node.get('target', [])):
+            for index, node in enumerate(violation.get('nodes', [])):
+                for target in node.get('target', []):
                     target_selector = json.dumps(target)  # safely encode string
                     label_text = json.dumps(str(index + 1))   # safely encode string
                     
@@ -103,30 +114,94 @@ def check_accessibility(url):
         return report_path
 
 def generate_report_html(url, results, screenshots):
+    violations = results.get('violations', [])
     return f'''
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
+        <meta charset="UTF-8">
         <style>
-            body {{ font-family: Arial, sans-serif; margin: 40px; }}
-            .header {{ text-align: center; margin-bottom: 30px; }}
-            .issue {{ margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; }}
-            .screenshot {{ max-width: 100%; margin-top: 10px; }}
-            .timestamp {{ color: #666; font-size: 0.9em; }}
+            body {{
+                font-family: "Arial", sans-serif;
+                margin: 0;
+                padding: 0;
+            }}
+
+            h1, h2, p {{
+                width: 100%;
+                white-space: nowrap;
+            }}
+
+            .title-page {{
+                height: 100vh;
+                width: 100vw;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                text-align: center;
+                page-break-after: always;
+                position: relative;
+            }}
+
+            .title-page h1 {{
+                font-size: 3em;
+                margin-bottom: 0.5em;
+            }}
+
+            .title-page h2 {{
+                font-size: 1.5em;
+                color: #555;
+                margin: 0.2em 0;
+            }}
+
+            .title-page p {{
+                font-size: 1.2em;
+                color: #777;
+                margin: 0.3em 0;
+            }}
+
+            .issue {{
+                page-break-before: always;
+                padding: 1cm;
+                box-sizing: border-box;
+                border: 2px solid black;
+                border-radius: 10px;
+            }}
+
+            .issue h3 {{
+                font-size: 1.6em;
+                margin-top: 0;
+                color: #333;
+            }}
+
+            .issue p {{
+                font-size: 1em;
+                margin: 0.3em 0;
+                color: #444;
+            }}
+
+            .screenshot-container {{
+                margin-top: 1em;
+                text-align: center;
+            }}
+
+            .screenshot {{
+                max-width: 100%;
+                max-height: 18cm;
+                border: 1px solid #ccc;
+                object-fit: contain;
+            }}
         </style>
     </head>
     <body>
-        <div class="header">
+        <div class="title-page">
             <h1>Accessibility Report</h1>
-            <p>URL: {url}</p>
-            <p class="timestamp">Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+            <h2>{url}</h2>
+            <p>Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+            <h2>Issues Found: {len(violations)}</h2>
         </div>
-        
-        <h2>Summary</h2>
-        <p>Total Issues Found: {len(results.get('violations', []))}</p>
-        
-        <h2>Issues</h2>
-        {generate_issues_html(results.get('violations', []), screenshots)}
+        {generate_issues_html(violations, screenshots)}
     </body>
     </html>
     '''
@@ -134,13 +209,19 @@ def generate_report_html(url, results, screenshots):
 def generate_issues_html(violations, screenshots):
     html = ''
     for i, violation in enumerate(violations):
-        screenshot = screenshots[i] if i < len(screenshots) else None
+        screenshot_html = ''
+        if i < len(screenshots) and screenshots[i]:
+            screenshot_html = f'''
+                <div class="screenshot-container">
+                    <img class="screenshot" src="data:image/png;base64,{screenshots[i]["data"]}" alt="Issue Screenshot">
+                </div>
+            '''
         html += f'''
         <div class="issue">
             <h3>{violation.get('description', 'Unknown Issue')}</h3>
             <p><strong>Impact:</strong> {violation.get('impact', 'Unknown')}</p>
             <p><strong>Help:</strong> {violation.get('help', 'No help available')}</p>
-            {f'<img class="screenshot" src="data:image/png;base64,{screenshot["data"]}" alt="Issue Screenshot">' if screenshot else ''}
+            {screenshot_html}
         </div>
         '''
-    return html 
+    return html
