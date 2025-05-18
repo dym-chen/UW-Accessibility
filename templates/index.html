@@ -162,6 +162,8 @@
               const a = document.createElement("a");
               a.href = url;
               a.download = `accessibility-report-${new Date().toISOString()}.pdf`;
+
+              // open pdf in new tab
               document.body.appendChild(a);
               a.click();
               window.URL.revokeObjectURL(url);

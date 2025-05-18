@@ -1,38 +1,97 @@
 from playwright.sync_api import sync_playwright
 from weasyprint import HTML, CSS
+from datetime import datetime
 import tempfile
 import os
-from datetime import datetime
 import json
+import base64
 
 def check_accessibility(url):
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page()
+        context = browser.new_context()
+        context.set_default_timeout(60000)  
+        page = context.new_page()
         
         # Navigate to the URL
         page.goto(url)
         
         # Inject axe-core
         page.add_script_tag(url='https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.8.2/axe.min.js')
+
+        # Run accessibility check - note the async arrow function and await inside evaluate
+        results = page.evaluate('''async () => { return await axe.run(document.body); }''')
         
-        # Run accessibility check
-        results = page.evaluate('''() => {
-            return axe.run(document.body);
-        }''')
+        # print axe results to a file in the debug folder
+        with open("debug/axe_results.json", "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2)
         
         # Take screenshots of issues
         screenshots = []
         for violation in results.get('violations', []):
-            # Take screenshot of the page
-            screenshot_path = os.path.join(tempfile.gettempdir(), f'issue_{len(screenshots)}.png')
-            page.screenshot(path=screenshot_path, full_page=True)
+            for node in violation.get('nodes', []):
+                for index, target in enumerate(node.get('target', [])):
+                    target_selector = json.dumps(target)  # safely encode string
+                    label_text = json.dumps(str(index + 1))   # safely encode string
+                    
+                    page.evaluate(f'''
+                    (() => {{
+                        const elements = document.querySelectorAll({target_selector});
+                        elements.forEach(element => {{
+                            // Add styles
+                            element.style.outline = "4px solid red";
+                            element.style.outlineOffset = "2px";
+                            element.style.position = "relative";
+
+                            // Add label
+                            const label = document.createElement('div');
+                            label.innerText = {label_text};
+                            label.className = 'axe-violation-label';
+                            label.style.position = 'absolute';
+                            label.style.top = '0';
+                            label.style.left = '0';
+                            label.style.transform = 'translate(-100%, -100%)'; 
+                            label.style.backgroundColor = 'black';
+                            label.style.color = 'white';
+                            label.style.zIndex = '9999';
+                            label.style.padding = '2px 4px';
+                            label.style.fontSize = '12px';
+                            label.style.borderRadius = '4px';
+                            element.appendChild(label);
+                        }});
+                    }})();
+                    ''')
+
+            # Take screenshot
+            screenshot_bytes = page.screenshot(full_page=True)
+            screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
             screenshots.append({
-                'path': screenshot_path,
+                'data': screenshot_base64,
                 'description': violation.get('description', ''),
                 'impact': violation.get('impact', '')
             })
-        
+
+            # Cleanup: remove outlines and labels
+            for node in violation.get('nodes', []):
+                for target in node.get('target', []):
+                    target_selector = json.dumps(target)
+                    page.evaluate(f'''
+                    (() => {{
+                        const elements = document.querySelectorAll({target_selector});
+                        elements.forEach(element => {{
+                            // Remove outline styles
+                            element.style.outline = '';
+                            element.style.outlineOffset = '';
+
+                            // Remove the label
+                            const label = element.querySelector('.axe-violation-label');
+                            if (label) {{
+                                element.removeChild(label);
+                            }}
+                        }});
+                    }})();
+                    ''')
+
         browser.close()
         
         # Generate PDF report
@@ -40,10 +99,6 @@ def check_accessibility(url):
         report_path = os.path.join(tempfile.gettempdir(), f'report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf')
         
         HTML(string=report_html).write_pdf(report_path)
-        
-        # Clean up screenshots
-        for screenshot in screenshots:
-            os.remove(screenshot['path'])
         
         return report_path
 
@@ -85,7 +140,7 @@ def generate_issues_html(violations, screenshots):
             <h3>{violation.get('description', 'Unknown Issue')}</h3>
             <p><strong>Impact:</strong> {violation.get('impact', 'Unknown')}</p>
             <p><strong>Help:</strong> {violation.get('help', 'No help available')}</p>
-            {f'<img class="screenshot" src="{screenshot["path"]}" alt="Issue Screenshot">' if screenshot else ''}
+            {f'<img class="screenshot" src="data:image/png;base64,{screenshot["data"]}" alt="Issue Screenshot">' if screenshot else ''}
         </div>
         '''
     return html 
