@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Accessibility & Git Comparison Tool</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      .container {
+        max-width: 1200px;
+        margin: 40px auto;
+      }
+      .card {
+        margin-bottom: 30px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      .loading {
+        display: none;
+      }
+      .diff-content {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 5px;
+        font-family: monospace;
+        white-space: pre-wrap;
+      }
+      .error-message {
+        color: #dc3545;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1 class="text-center mb-5">Accessibility & Git Comparison Tool</h1>
+
+      <div class="row">
+        <!-- Accessibility Checker -->
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="h4 mb-0">Accessibility Checker</h2>
+            </div>
+            <div class="card-body">
+              <form id="accessibilityForm">
+                <div class="mb-3">
+                  <label for="url" class="form-label">Website URL</label>
+                  <input
+                    type="url"
+                    class="form-control"
+                    id="url"
+                    name="url"
+                    required
+                    placeholder="https://example.com"
+                  />
+                </div>
+                <button type="submit" class="btn btn-primary">
+                  Check Accessibility
+                </button>
+              </form>
+              <div id="accessibilityLoading" class="loading mt-3">
+                <div class="d-flex align-items-center">
+                  <div
+                    class="spinner-border text-primary me-2"
+                    role="status"
+                  ></div>
+                  <span>Checking accessibility...</span>
+                </div>
+              </div>
+              <div id="accessibilityError" class="error-message"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Git Comparator -->
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="h4 mb-0">Git Repository Comparator</h2>
+            </div>
+            <div class="card-body">
+              <form id="gitForm">
+                <div class="mb-3">
+                  <label for="repoUrl" class="form-label">Repository URL</label>
+                  <input
+                    type="url"
+                    class="form-control"
+                    id="repoUrl"
+                    name="repo_url"
+                    required
+                    placeholder="https://github.com/username/repo.git"
+                  />
+                </div>
+                <div class="mb-3">
+                  <label for="branch" class="form-label">Branch</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="branch"
+                    name="branch"
+                    placeholder="main"
+                    value="main"
+                  />
+                </div>
+                <div class="mb-3">
+                  <label for="commitHash" class="form-label"
+                    >Commit Hash (optional)</label
+                  >
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="commitHash"
+                    name="commit_hash"
+                    placeholder="Leave empty to compare with previous commit"
+                  />
+                </div>
+                <button type="submit" class="btn btn-primary">
+                  Compare Commits
+                </button>
+              </form>
+              <div id="gitLoading" class="loading mt-3">
+                <div class="d-flex align-items-center">
+                  <div
+                    class="spinner-border text-primary me-2"
+                    role="status"
+                  ></div>
+                  <span>Comparing commits...</span>
+                </div>
+              </div>
+              <div id="gitError" class="error-message"></div>
+              <div id="gitResults" class="mt-4"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document
+        .getElementById("accessibilityForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const form = e.target;
+          const loading = document.getElementById("accessibilityLoading");
+          const error = document.getElementById("accessibilityError");
+
+          loading.style.display = "block";
+          error.textContent = "";
+
+          try {
+            const response = await fetch("/check-accessibility", {
+              method: "POST",
+              body: new FormData(form),
+            });
+
+            if (response.ok) {
+              const blob = await response.blob();
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `accessibility-report-${new Date().toISOString()}.pdf`;
+              document.body.appendChild(a);
+              a.click();
+              window.URL.revokeObjectURL(url);
+              a.remove();
+            } else {
+              const data = await response.json();
+              error.textContent = data.error || "An error occurred";
+            }
+          } catch (err) {
+            error.textContent =
+              "An error occurred while processing your request";
+          } finally {
+            loading.style.display = "none";
+          }
+        });
+
+      document
+        .getElementById("gitForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const form = e.target;
+          const loading = document.getElementById("gitLoading");
+          const error = document.getElementById("gitError");
+          const results = document.getElementById("gitResults");
+
+          loading.style.display = "block";
+          error.textContent = "";
+          results.innerHTML = "";
+
+          try {
+            const response = await fetch("/compare-git", {
+              method: "POST",
+              body: new FormData(form),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+              results.innerHTML = `
+                        <h3>Comparison Results</h3>
+                        <p><strong>Current Commit:</strong> ${
+                          data.current_commit
+                        }</p>
+                        <p><strong>Previous Commit:</strong> ${
+                          data.old_commit
+                        }</p>
+                        <h4>Changed Files:</h4>
+                        <ul>
+                            ${data.changed_files
+                              .map(
+                                (file) => `
+                                <li>
+                                    <strong>${file}</strong>
+                                    <pre class="diff-content">${data.diffs[file]}</pre>
+                                </li>
+                            `
+                              )
+                              .join("")}
+                        </ul>
+                    `;
+            } else {
+              error.textContent = data.error || "An error occurred";
+            }
+          } catch (err) {
+            error.textContent =
+              "An error occurred while processing your request";
+          } finally {
+            loading.style.display = "none";
+          }
+        });
+    </script>
+  </body>
+</html>
