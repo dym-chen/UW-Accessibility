@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, send_file, jsonify
-import os
 from datetime import datetime
 from accessibility_checker import check_accessibility
 from git_comparator import compare_commits
@@ -72,6 +71,24 @@ def git_compare():
     
     try:
         diff_results = compare_commits(repo_url, branch, commit_hash)
+        
+        # Store accessibility reports in the database
+        for file_path, issues in diff_results.get('accessibility_issues', {}).items():
+            if issues.get('has_issues') and issues.get('report_path'):
+                try:
+                    file_id = db.store_pdf(
+                        issues['report_path'],
+                        f"Git comparison - {file_path}",
+                        metadata={
+                            'type': 'git_accessibility',
+                            'file_path': file_path,
+                            'commit': diff_results['current_commit']
+                        }
+                    )
+                    issues['report_id'] = file_id
+                except Exception as e:
+                    issues['error'] = f"Failed to store report: {str(e)}"
+        
         return jsonify(diff_results)
     except Exception as e:
         return jsonify({'error': str(e)}), 500

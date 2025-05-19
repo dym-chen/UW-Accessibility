@@ -3,7 +3,6 @@ from datetime import datetime
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import gridfs
-import base64
 
 # Load environment variables
 load_dotenv()
@@ -20,9 +19,13 @@ class Database:
         self.db = self.client['accessibility_reports']
         self.fs = gridfs.GridFS(self.db)
 
-    def store_pdf(self, pdf_path, url):
+    def store_pdf(self, pdf_path, url, metadata=None):
         """
         Store PDF in MongoDB using GridFS
+        Args:
+            pdf_path: Path to the PDF file
+            url: URL or description of the report
+            metadata: Additional metadata to store (optional)
         Returns: The ID of the stored file
         """
         try:
@@ -30,18 +33,22 @@ class Database:
             with open(pdf_path, 'rb') as pdf_file:
                 pdf_data = pdf_file.read()
             
-            # Store file metadata
-            metadata = {
+            # Prepare metadata
+            base_metadata = {
                 'url': url,
                 'timestamp': datetime.now(),
-                'type': 'accessibility_report'
+                'type': metadata.get('type', 'accessibility_report') if metadata else 'accessibility_report'
             }
+            
+            # Add additional metadata if provided
+            if metadata:
+                base_metadata.update(metadata)
             
             # Store in GridFS
             file_id = self.fs.put(
                 pdf_data,
                 filename=f'accessibility-report-{datetime.now().strftime("%Y%m%d-%H%M%S")}.pdf',
-                metadata=metadata
+                metadata=base_metadata
             )
             
             return str(file_id)

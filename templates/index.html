@@ -38,7 +38,9 @@
       <h1 class="text-center mb-5">Accessibility & Git Comparison Tool</h1>
 
       <div class="text-center mb-4">
-        <a href="{{ url_for('view_reports') }}" class="btn btn-outline-primary">View Accessibility Reports History</a>
+        <a href="{{ url_for('view_reports') }}" class="btn btn-outline-primary"
+          >View Accessibility Reports History</a
+        >
       </div>
 
       <div class="row">
@@ -221,7 +223,41 @@
                                 (file) => `
                                 <li>
                                     <strong>${file}</strong>
-                                    <pre class="diff-content">${data.diffs[file]}</pre>
+                                    <pre class="diff-content">${
+                                      data.diffs[file]
+                                    }</pre>
+                                    ${
+                                      data.accessibility_issues &&
+                                      data.accessibility_issues[file]
+                                        ? `
+                                        <div class="accessibility-issues mt-3">
+                                            <h5>Accessibility Issues:</h5>
+                                            ${
+                                              data.accessibility_issues[file]
+                                                .has_issues
+                                                ? `
+                                                <div class="alert alert-warning">
+                                                    <p>Accessibility issues found! <a href="/download-report/${data.accessibility_issues[file].report_path}" class="alert-link">Download Report</a></p>
+                                                </div>
+                                            `
+                                                : data.accessibility_issues[
+                                                    file
+                                                  ].error
+                                                ? `
+                                                <div class="alert alert-danger">
+                                                    <p>Error checking accessibility: ${data.accessibility_issues[file].error}</p>
+                                                </div>
+                                            `
+                                                : `
+                                                <div class="alert alert-success">
+                                                    <p>No accessibility issues found.</p>
+                                                </div>
+                                            `
+                                            }
+                                        </div>
+                                    `
+                                        : ""
+                                    }
                                 </li>
                             `
                               )

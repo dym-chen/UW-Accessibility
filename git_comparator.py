@@ -2,6 +2,8 @@ import tempfile
 import os
 from git import Repo, GitCommandError
 import shutil
+from accessibility_checker import check_accessibility
+import base64
 
 def compare_commits(repo_url, branch='main', commit_hash=None):
     temp_dir = tempfile.mkdtemp()
@@ -36,7 +38,8 @@ def compare_commits(repo_url, branch='main', commit_hash=None):
             'current_commit': current_commit.hexsha,
             'old_commit': old_commit.hexsha,
             'changed_files': [],
-            'diffs': {}
+            'diffs': {},
+            'accessibility_issues': {}
         }
         
         for item in diff:
@@ -47,6 +50,30 @@ def compare_commits(repo_url, branch='main', commit_hash=None):
             try:
                 diff_content = repo.git.diff(old_commit.hexsha, current_commit.hexsha, '--', file_path)
                 results['diffs'][file_path] = diff_content
+                
+                # Check for accessibility issues if it's an HTML file
+                if file_path.endswith('.html'):
+                    # Create a temporary HTML file with the current version
+                    temp_html_path = os.path.join(temp_dir, 'temp.html')
+                    with open(temp_html_path, 'w', encoding='utf-8') as f:
+                        f.write(repo.git.show(f"{current_commit.hexsha}:{file_path}"))
+                    
+                    # Run accessibility check
+                    try:
+                        report_path = check_accessibility(f"file://{temp_html_path}")
+                        results['accessibility_issues'][file_path] = {
+                            'report_path': report_path,
+                            'has_issues': True
+                        }
+                    except Exception as e:
+                        results['accessibility_issues'][file_path] = {
+                            'error': str(e),
+                            'has_issues': False
+                        }
+                    
+                    # Clean up temporary HTML file
+                    os.remove(temp_html_path)
+                
             except GitCommandError:
                 results['diffs'][file_path] = "Error getting diff content"
         
