@@ -35,7 +35,15 @@
   </head>
   <body>
     <div class="container">
-      <h1 class="text-center mb-5">Accessibility & Git Comparison Tool</h1>
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-center mb-0">Accessibility & Git Comparison Tool</h1>
+        <div class="d-flex align-items-center">
+          <span class="me-3">Welcome, {{ user_name }}</span>
+          <a href="{{ url_for('logout') }}" class="btn btn-outline-danger"
+            >Logout</a
+          >
+        </div>
+      </div>
 
       <div class="text-center mb-4">
         <a href="{{ url_for('view_reports') }}" class="btn btn-outline-primary"

@@ -3,6 +3,7 @@ from datetime import datetime
 from pymongo import MongoClient
 from dotenv import load_dotenv
 import gridfs
+from bson import ObjectId
 
 # Load environment variables
 load_dotenv()
@@ -19,12 +20,13 @@ class Database:
         self.db = self.client['accessibility_reports']
         self.fs = gridfs.GridFS(self.db)
 
-    def store_pdf(self, pdf_path, url, metadata=None):
+    def store_pdf(self, pdf_path, url, user_id, metadata=None):
         """
         Store PDF in MongoDB using GridFS
         Args:
             pdf_path: Path to the PDF file
             url: URL or description of the report
+            user_id: ID of the user who created the report
             metadata: Additional metadata to store (optional)
         Returns: The ID of the stored file
         """
@@ -37,7 +39,8 @@ class Database:
             base_metadata = {
                 'url': url,
                 'timestamp': datetime.now(),
-                'type': metadata.get('type', 'accessibility_report') if metadata else 'accessibility_report'
+                'type': metadata.get('type', 'accessibility_report') if metadata else 'accessibility_report',
+                'user_id': user_id
             }
             
             # Add additional metadata if provided
@@ -56,28 +59,42 @@ class Database:
         except Exception as e:
             raise Exception(f"Failed to store PDF: {str(e)}")
 
-    def get_pdf(self, file_id):
+    def get_pdf(self, file_id, user_id=None):
         """
         Retrieve PDF from MongoDB
+        Args:
+            file_id: ID of the PDF file
+            user_id: Optional user ID to verify ownership
         Returns: The PDF data and filename
         """
         try:
-            file_data = self.fs.get(file_id)
+            file_data = self.fs.get(ObjectId(file_id))
+            
+            # Check if user has access to this file
+            if user_id and file_data.metadata.get('user_id') != user_id:
+                raise Exception("Access denied")
+                
             return file_data.read(), file_data.filename
         except Exception as e:
             raise Exception(f"Failed to retrieve PDF: {str(e)}")
 
-    def list_reports(self):
+    def list_reports(self, user_id):
         """
-        List all accessibility reports
+        List all accessibility reports for a specific user
+        Args:
+            user_id: ID of the user
         Returns: List of report metadata
         """
         reports = []
-        for grid_out in self.fs.find({"metadata.type": "accessibility_report"}):
+        for grid_out in self.fs.find({
+            "metadata.type": "accessibility_report",
+            "metadata.user_id": user_id
+        }):
             reports.append({
                 'file_id': str(grid_out._id),
                 'filename': grid_out.filename,
                 'url': grid_out.metadata.get('url'),
-                'timestamp': grid_out.metadata.get('timestamp')
+                'timestamp': grid_out.metadata.get('timestamp'),
+                'type': grid_out.metadata.get('type')
             })
         return reports 
